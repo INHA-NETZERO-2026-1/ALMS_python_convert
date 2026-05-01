@@ -2,9 +2,16 @@
 ALMS stft.py - LPMS stft.py 구조 유지, ALMS 파라미터로 수정
 """
 import os
+import sys
 import numpy as np
-import fourier as lib
-from parser import ALMSData
+
+try:
+    from . import fourier as lib
+    from .parser import ALMSData
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from module import fourier as lib
+    from module.parser import ALMSData
 
 ALMS_UB        = 600000
 ALMS_NFFT      = 1024
@@ -76,14 +83,35 @@ def get_max_ch_result(all_ch_results):
         return None
     return max(all_ch_results, key=lambda r: r["max_val"])
 
-if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from parser import parse_alms_bin
+def extract_features(alms_data: ALMSData) -> dict:
+    """전 채널 피처 추출: {ch_name: {rms, peak_60kHz, peak_100kHz, peak_5_7kHz}}"""
+    result = {}
+    h = alms_data.header
+    dt = 1.0 / h.sampling_rate
 
-    test_file = "test_data/test.bin"
+    for ch in alms_data.channels:
+        obj = lib.Fourier_obj(
+            val=ch.raw_data.tolist(),
+            dt=dt,
+            fs=h.sampling_rate,
+            nFFT=ALMS_NFFT,
+        )
+        obj.focus()
+        result[ch.name] = {
+            "rms": ch.rms,
+            "peak_60kHz": obj.get_peak_at(center_hz=60000, bandwidth_hz=5000),
+            "peak_100kHz": obj.get_peak_at(center_hz=100000, bandwidth_hz=5000),
+            "peak_5_7kHz": obj.get_peak_at(center_hz=6000, bandwidth_hz=1000),
+        }
+
+    return result
+
+if __name__ == "__main__":
+    from module.parser import parse_alms_bin
+
+    test_file = "test_data/2-2.Sample Data_ALMS_TRIGGER_250905054513824.bin"
     if not os.path.exists(test_file):
-        print("테스트 파일 없음 → generate_test_bin.py 먼저 실행하세요.")
+        print(f"테스트 파일 없음: {test_file}")
         sys.exit(1)
 
     print("=" * 60)

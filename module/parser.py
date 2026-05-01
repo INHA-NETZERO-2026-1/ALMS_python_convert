@@ -51,6 +51,11 @@ class ALMSHeader:
         return self.sampling_rate * self.event_duration // 1000
 
     @property
+    def time_axis(self) -> np.ndarray:
+        """이벤트 구간의 시간축(sec)"""
+        return np.linspace(0, self.event_duration / 1000.0, self.n_samples)
+
+    @property
     def alarm_result_str(self) -> str:
         labels = ["Normal", "Leak Warning", "Leak Alarm", "Crack Alarm", "Hi Alarm", "Hi-Hi Alarm"]
         return labels[self.alarm_result] if 0 <= self.alarm_result < len(labels) else "Unknown"
@@ -190,6 +195,14 @@ def _read_string(data: bytes) -> str:
         return data.decode('latin-1', errors='replace').strip()
 
 
+def _read_fixed_string(data: bytes) -> str:
+    """고정폭 문자열에서 NUL padding만 제거"""
+    try:
+        return data.replace(b'\x00', b'').decode('cp949', errors='replace').strip()
+    except Exception:
+        return data.replace(b'\x00', b'').decode('latin-1', errors='replace').strip()
+
+
 # ────────────────────────────────────────────────────────────────
 # 핵심 파서: C# tsCSVExport_Click 1:1 Python 변환
 # ────────────────────────────────────────────────────────────────
@@ -229,7 +242,7 @@ def parse_alms_bin(bin_file_path: str) -> ALMSData:
 
         # ── 글로벌 헤더 ──────────────────────────────────────────
         # C#: br.ReadBytes(8) → getCharFromByte → SITE
-        header.site = _read_string(f.read(8))
+        header.site = _read_fixed_string(f.read(8))
 
         # C#: br.ReadBytes(2) → readshort → System Type
         # strSystem = { "LPMS", "ALMS", "RCPVMS", "IVMS" }
@@ -470,9 +483,18 @@ def exportCSV(bin_file_path: str, csv_output_path: str):
     csv_output_path : str
         저장할 CSV 파일 경로
     """
+    data = parse_alms_bin(bin_file_path)
+    export_to_csv(data, csv_output_path)
+
+
+def export_to_csv(alms_data: ALMSData, out_path: str) -> None:
+    """
+    ALMSData 객체에서 직접 CSV 내보내기 (viewer용)
+    기존 exportCSV와 동일한 CSV 형식을 사용합니다.
+    """
     import csv
 
-    data = parse_alms_bin(bin_file_path)
+    data = alms_data
     h = data.header
 
     system_names = ["LPMS", "ALMS", "RCPVMS", "IVMS"]
@@ -480,7 +502,7 @@ def exportCSV(bin_file_path: str, csv_output_path: str):
     userid_labels = ["Monitoring", "Operator", "Admin"]
     signal_labels = ["Background Noise", "Event", "PST", "Air Injection Test", "Pencil Break Test", "LPMS Trigger"]
 
-    with open(csv_output_path, 'w', newline='', encoding='utf-8-sig') as f:
+    with open(out_path, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.writer(f)
 
         # ── 헤더 정보 (C# fw.WriteLine 순서와 동일) ──
@@ -546,7 +568,7 @@ def exportCSV(bin_file_path: str, csv_output_path: str):
                 row.append(ch.raw_data[k] if k < len(ch.raw_data) else "")
             w.writerow(row)
 
-    print(f"CSV 저장 완료: {csv_output_path}")
+    print(f"CSV 저장 완료: {out_path}")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -560,7 +582,7 @@ if __name__ == "__main__":
     # 테스트 BIN 파일 생성 후 검증
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-    test_file = "test_data/test.bin"
+    test_file = "../test_data/2-2.Sample Data_ALMS_TRIGGER_250905054513824.bin"
 
     if not os.path.exists(test_file):
         print("테스트 파일 없음 → generate_test_bin.py 먼저 실행하세요.")
@@ -606,7 +628,7 @@ if __name__ == "__main__":
     print(f"  getEventDate() = {event_date}")
 
     # ── 3. CSV 내보내기 ──
-    os.makedirs("test_data", exist_ok=True)
-    exportCSV(test_file, "test_data/output_check.csv")
+    os.makedirs("../test_data", exist_ok=True)
+    exportCSV(test_file, "../test_data/output_check.csv")
 
     print(f"\n✅ 모든 검증 완료!")

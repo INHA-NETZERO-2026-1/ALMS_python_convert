@@ -1,7 +1,7 @@
 """
 ALMS Phase 1~3 파이프라인 테스트
 =================================
-테스트 대상 파일: test_data/test.bin
+테스트 대상 파일: test_data/2-2.Sample Data_ALMS_TRIGGER_250905054513824.bin
 
 Phase 1: BIN 파싱    (parser.py)
 Phase 2: STFT        (stft.py + fourier.py)
@@ -11,7 +11,7 @@ Phase 3: 피처 추출   (stft.py perform_stft_all_ch)
 import os
 import sys
 
-BIN_FILE   = "test_data/test.bin"
+BIN_FILE   = "test_data/2-2.Sample Data_ALMS_TRIGGER_250905054513824.bin"
 OUTPUT_DIR = "test_data/pipeline_out"
 
 PASS = "[PASS]"
@@ -32,7 +32,7 @@ def check(label, condition, detail=""):
 
 if not os.path.exists(BIN_FILE):
     print(f"테스트 파일 없음: {BIN_FILE}")
-    print("→ temp/generate_test_bin.py 를 먼저 실행하세요.")
+    print("→ test_data 디렉토리에 샘플 BIN 파일을 추가하세요.")
     sys.exit(1)
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -45,13 +45,12 @@ print("=" * 60)
 print("  Phase 1: BIN 파싱 (parser.py)")
 print("=" * 60)
 
-from parser import (
+from module.parser import (
     parse_alms_bin,
     readEventCh,
     getEventData,
     getAllData,
     getEventDate,
-    getALMSData,
     exportCSV,
 )
 
@@ -121,7 +120,7 @@ print("=" * 60)
 print("  Phase 2~3: STFT + 피처 추출 (stft.py)")
 print("=" * 60)
 
-import stft
+from module import stft
 
 # 단일 채널 (LPMS 호환 인터페이스)
 print(f"\n  [단일 채널 STFT - 이벤트 채널 {h.event_ch}]")

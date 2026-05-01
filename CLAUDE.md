@@ -177,7 +177,7 @@ features = {
 
 ```bash
 # 1. 테스트 BIN 생성 + 파서 검증
-python temp/generate_test_bin.py
+python module/generate_test_bin.py
 
 # 2. bin_reader.py 단독 검증
 python bin_reader.py
