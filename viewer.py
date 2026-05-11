@@ -474,10 +474,38 @@ class ALMSViewer(QMainWindow):
         fig = self.canvas_stft.fig
         fig.clear()
         fig.patch.set_facecolor('#1e1e2e')
-        gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.35)
+        # ================== 좌측 FFT 파형 출력 열 생성 (담당자: 박근채) ==================
+        # gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.35) - 수정 전
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 5], height_ratios=[3, 1], hspace=0.35, wspace=0.08)
+        # ========================================================================
+
+        # ==================== ax_fft 축 신규 추가 (담당자: 박근채) ====================
+        ax_fft = fig.add_subplot(gs[0, 0])
+        ax_fft.set_facecolor('#181825')
+        # FFT 계산
+        N = len(data)
+        if N > 0:
+            yf = np.abs(np.fft.rfft(data)) / N
+            xf = np.fft.rfftfreq(N, d=1 / sr)
+
+            fft_mask = xf <= f_max_khz * 1000
+            ax_fft.plot(yf[fft_mask], xf[fft_mask] / 1000, color='#a6e3a1', linewidth=1.0)
+
+            actual_max = xf[fft_mask].max() / 1000
+            ax_fft.set_ylim([0, actual_max])
+
+        ax_fft.set_ylabel("Frequency (kHz)", color='#a6adc8')
+        ax_fft.set_xlabel("Amplitude", color='#a6adc8')
+        ax_fft.tick_params(colors='#a6adc8')
+        for sp in ax_fft.spines.values():
+            sp.set_color('#45475a')
+        # ========================================================================
 
         # Spectrogram
-        ax_spec = fig.add_subplot(gs[0])
+        # ================= sharey로 눈금 일정하게 추가 (담당자: 박근채) =================
+        # ax_spec = fig.add_subplot(gs[0]) - 수정 전
+        ax_spec = fig.add_subplot(gs[0, 1], sharey=ax_fft)
+        # ========================================================================
         ax_spec.set_facecolor('#181825')
         im = ax_spec.pcolormesh(times, f_plot, p_plot, shading='gouraud', cmap='inferno')
 
@@ -492,8 +520,10 @@ class ALMSViewer(QMainWindow):
             f"Window={nperseg}  Overlap={self.spin_overlap.value()}%  [{win_func}]",
             color='#cdd6f4', fontsize=11,
         )
-        ax_spec.set_ylabel("Frequency (kHz)", color='#a6adc8')
-        ax_spec.tick_params(colors='#a6adc8')
+        # ===== y축 레이블/눈금은 좌측 FFT에 있으므로 STFT 쪽은 숨김 (담당자: 박근채) =====
+        plt.setp(ax_spec.get_yticklabels(), visible=False)
+        ax_spec.tick_params(colors='#a6adc8', left=False)
+        # ====================================================================
         for sp in ax_spec.spines.values():
             sp.set_color('#45475a')
 
@@ -504,7 +534,10 @@ class ALMSViewer(QMainWindow):
 
         # Raw signal (아래)
         t = np.linspace(0, dur / 1000, len(data))
-        ax_raw = fig.add_subplot(gs[1])
+        # ============== 열 추가로 뷰 꺠지지 않게 공백 열 추가 (담당자: 박근채) ==============
+        # ax_raw = fig.add_subplot(gs[1]) - 수정 전
+        ax_raw = fig.add_subplot(gs[1, 1])
+        # ========================================================================
         ax_raw.set_facecolor('#181825')
         ax_raw.plot(t, data, color='#89b4fa', linewidth=0.5)
         ax_raw.set_xlabel("Time (sec)", color='#a6adc8')
