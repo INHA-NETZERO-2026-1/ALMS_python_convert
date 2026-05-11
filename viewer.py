@@ -521,9 +521,10 @@ class ALMSViewer(QMainWindow):
             color='#cdd6f4', fontsize=11,
         )
         # ===== y축 레이블/눈금은 좌측 FFT에 있으므로 STFT 쪽은 숨김 (담당자: 박근채) =====
+        # ax_spec.set_ylabel("Frequency (kHz)", color='#a6adc8') - 수정 전
         plt.setp(ax_spec.get_yticklabels(), visible=False)
-        ax_spec.tick_params(colors='#a6adc8', left=False)
         # ====================================================================
+        ax_spec.tick_params(colors='#a6adc8', left=False)
         for sp in ax_spec.spines.values():
             sp.set_color('#45475a')
 
