@@ -34,6 +34,7 @@ class ALMSViewer(QMainWindow):
         super().__init__()
         self.alms_data = None
         self.stft_results = []
+        self.stft_cache = {}
         self.current_ch = 0
         self._tmp_dir = tempfile.mkdtemp(prefix="alms_viewer_")
 
@@ -270,8 +271,11 @@ class ALMSViewer(QMainWindow):
         self.combo_ch.setCurrentIndex(h.event_ch)
 
         self.current_ch = h.event_ch
+        self.stft_cache.clear()
         self._plot_raw()
         self._plot_overview()
+        self._plot_stft_for_current_ch()
+        self._run_all_stft()
 
     def _on_parse_error(self, msg: str):
         self.progress_bar.setVisible(False)
@@ -285,6 +289,7 @@ class ALMSViewer(QMainWindow):
         self.current_ch = idx
         if self.alms_data:
             self._plot_raw()
+            self._plot_stft_for_current_ch()
 
     # ── Raw Signal 플롯 ───────────────────────────────────────────
 
@@ -303,32 +308,52 @@ class ALMSViewer(QMainWindow):
 
     # ── 인터랙티브 단일 채널 STFT ─────────────────────────────────
 
+    def _stft_cache_key(self):
+        return (
+            self.current_ch,
+            int(self.spin_window.currentText()),
+            self.spin_overlap.value(),
+            self.combo_window.currentText(),
+            self.spin_fmax.value(),
+        )
+
     def _run_stft_interactive(self):
         if not self.alms_data:
             return
         self.tabs.setCurrentIndex(1)
-        self._plot_stft_interactive()
+        self._plot_stft_for_current_ch()
 
-    def _plot_stft_interactive(self):
-        ch = self.alms_data.channels[self.current_ch]
+    def _plot_stft_for_current_ch(self):
+        if not self.alms_data:
+            return
+        key = self._stft_cache_key()
+        ch_idx, nperseg, overlap_pct, win_func, fmax_khz = key
+        ch = self.alms_data.channels[ch_idx]
         sr = self.alms_data.header.sampling_rate
         dur = self.alms_data.header.event_duration
+        ch_name = _ch_display_name(ch, ch_idx)
 
-        nperseg = int(self.spin_window.currentText())
-        overlap_pct = self.spin_overlap.value()
-        noverlap = int(nperseg * overlap_pct / 100)
-        win_func = self.combo_window.currentText()
-        fmax_khz = self.spin_fmax.value()
-        ch_name = _ch_display_name(ch, self.current_ch)
-
-        freqs, times, power_db = services.compute_interactive_stft(
-            raw=ch.raw_data,
-            fs=sr,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=win_func,
-            fmax_hz=fmax_khz * 1000,
-        )
+        cached = self.stft_cache.get(key)
+        if cached is not None:
+            freqs, times, power_db = cached
+            status_msg = f"📋 STFT 캐시  |  {ch_name}"
+        else:
+            noverlap = int(nperseg * overlap_pct / 100)
+            freqs, times, power_db = services.compute_interactive_stft(
+                raw=ch.raw_data,
+                fs=sr,
+                nperseg=nperseg,
+                noverlap=noverlap,
+                window=win_func,
+                fmax_hz=fmax_khz * 1000,
+            )
+            self.stft_cache[key] = (freqs, times, power_db)
+            freq_res = freqs[1] - freqs[0] if len(freqs) > 1 else 0
+            time_res = (times[1] - times[0]) * 1000 if len(times) > 1 else 0
+            status_msg = (
+                f"✅ STFT 완료  |  {ch_name}  |  "
+                f"주파수 해상도: {freq_res:.1f} Hz  |  시간 해상도: {time_res:.2f} ms"
+            )
 
         plots.plot_spectrogram(
             fig=self.canvas_stft.fig,
@@ -345,13 +370,7 @@ class ALMSViewer(QMainWindow):
             fs=sr,
         )
         self.canvas_stft.draw()
-
-        freq_res = freqs[1] - freqs[0] if len(freqs) > 1 else 0
-        time_res = (times[1] - times[0]) * 1000 if len(times) > 1 else 0
-        self.statusbar.showMessage(
-            f"✅ STFT 완료  |  {ch_name}  |  "
-            f"주파수 해상도: {freq_res:.1f} Hz  |  시간 해상도: {time_res:.2f} ms"
-        )
+        self.statusbar.showMessage(status_msg)
 
     # ── 전채널 STFT + Phase 3 피처 ───────────────────────────────
 
@@ -543,11 +562,14 @@ class ALMSViewer(QMainWindow):
 
 
 def main():
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
     app = QApplication(sys.argv)
     app.setApplicationName("ALMS BIN Viewer")
-    app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     viewer = ALMSViewer()
     viewer.show()
+    viewer.raise_()
+    viewer.activateWindow()
     sys.exit(app.exec_())
