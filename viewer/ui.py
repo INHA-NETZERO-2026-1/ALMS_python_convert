@@ -342,6 +342,7 @@ class ALMSViewer(QMainWindow):
             nperseg=nperseg,
             overlap_pct=overlap_pct,
             win_func=win_func,
+            fs=sr,
         )
         self.canvas_stft.draw()
 

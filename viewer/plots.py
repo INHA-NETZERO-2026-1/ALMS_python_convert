@@ -63,16 +63,40 @@ def plot_raw(fig, raw, fs: int, dur_ms: int, ch_name: str):
 
 def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
                      ch_name: str, fmax_khz: int, nperseg: int,
-                     overlap_pct: int, win_func: str):
+                     overlap_pct: int, win_func: str, fs: int = None):
     fig.clear()
     fig.patch.set_facecolor('#1e1e2e')
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.35)
+    gs = gridspec.GridSpec(
+        2, 2, width_ratios=[1, 5], height_ratios=[3, 1],
+        hspace=0.35, wspace=0.08,
+    )
 
     freq_mask = freqs <= fmax_khz * 1000
     f_plot = freqs[freq_mask] / 1000
     p_plot = power_db[freq_mask, :]
 
-    ax_spec = fig.add_subplot(gs[0])
+    raw = np.asarray(raw, dtype=np.float64)
+    n = len(raw)
+    sr = fs if fs is not None else (int(n / (dur_ms / 1000)) if dur_ms > 0 else 0)
+
+    # 좌측 FFT 파형 (Frequency를 y축으로 공유)
+    ax_fft = fig.add_subplot(gs[0, 0])
+    ax_fft.set_facecolor('#181825')
+    if n > 0 and sr > 0:
+        yf = np.abs(np.fft.rfft(raw)) / n
+        xf = np.fft.rfftfreq(n, d=1 / sr)
+        fft_mask = xf <= fmax_khz * 1000
+        ax_fft.plot(yf[fft_mask], xf[fft_mask] / 1000, color='#a6e3a1', linewidth=1.0)
+        actual_max = xf[fft_mask].max() / 1000 if fft_mask.any() else fmax_khz
+        ax_fft.set_ylim([0, actual_max])
+    ax_fft.set_ylabel("Frequency (kHz)", color='#a6adc8')
+    ax_fft.set_xlabel("Amplitude", color='#a6adc8')
+    ax_fft.tick_params(colors='#a6adc8')
+    for sp in ax_fft.spines.values():
+        sp.set_color('#45475a')
+
+    # Spectrogram (y축은 좌측 FFT와 공유)
+    ax_spec = fig.add_subplot(gs[0, 1], sharey=ax_fft)
     ax_spec.set_facecolor('#181825')
     im = ax_spec.pcolormesh(times, f_plot, p_plot, shading='gouraud', cmap='inferno')
 
@@ -86,8 +110,8 @@ def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
         f"Window={nperseg}  Overlap={overlap_pct}%  [{win_func}]",
         color='#cdd6f4', fontsize=11,
     )
-    ax_spec.set_ylabel("Frequency (kHz)", color='#a6adc8')
-    ax_spec.tick_params(colors='#a6adc8')
+    plt.setp(ax_spec.get_yticklabels(), visible=False)
+    ax_spec.tick_params(colors='#a6adc8', left=False)
     for sp in ax_spec.spines.values():
         sp.set_color('#45475a')
 
@@ -96,9 +120,9 @@ def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
             ax_spec.axhline(f_khz, color=clr, linewidth=0.8, linestyle='--', alpha=0.7, label=label)
     ax_spec.legend(loc='upper right', fontsize=8, facecolor='#313244', labelcolor='#cdd6f4')
 
-    raw = np.asarray(raw, dtype=np.float64)
-    t = np.linspace(0, dur_ms / 1000, len(raw))
-    ax_raw = fig.add_subplot(gs[1])
+    # 하단: Raw signal (스펙트로그램 열 아래)
+    t = np.linspace(0, dur_ms / 1000, n)
+    ax_raw = fig.add_subplot(gs[1, 1])
     ax_raw.set_facecolor('#181825')
     ax_raw.plot(t, raw, color='#89b4fa', linewidth=0.5)
     ax_raw.set_xlabel("Time (sec)", color='#a6adc8')
