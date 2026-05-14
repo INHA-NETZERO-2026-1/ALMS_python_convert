@@ -264,13 +264,31 @@ class ALMSViewer(QMainWindow):
 
         self.combo_ch.blockSignals(True)
         self.combo_ch.clear()
+
+        # =====================================================================
+        # 남정우 수정 : event_ch off-by-one 버그 수정
+        # ---------------------------------------------------------------------
+        # [수정 전] marker = "  ★" if i == h.event_ch else ""
+        #           → h.event_ch 를 배열 인덱스(0-based)로 사용
+        #           → 실제로 h.event_ch 는 ch_no(1-based) 값이므로
+        #             엉뚱한 채널에 ★ 표시됨 (예: U-101 대신 U-102)
+        #
+        # [수정 후] ch.ch_no == h.event_ch 로 비교
+        #           → ch_no 기준으로 이벤트 채널을 정확히 찾음
+        #           → 0-based 배열 인덱스(_event_ch_idx)를 별도 저장
+        # =====================================================================
+        self._event_ch_idx = next(
+            (i for i, ch in enumerate(data.channels) if ch.ch_no == h.event_ch),
+            0,   # fallback: 매칭 채널 없으면 0번
+        )
+
         for i, ch in enumerate(data.channels):
-            marker = "  ★" if i == h.event_ch else ""
+            marker = "  ★" if i == self._event_ch_idx else ""   # 남정우 수정
             self.combo_ch.addItem(f"[{i}] {_ch_display_name(ch, i)}{marker}")
         self.combo_ch.blockSignals(False)
-        self.combo_ch.setCurrentIndex(h.event_ch)
+        self.combo_ch.setCurrentIndex(self._event_ch_idx)   # 남정우 수정
 
-        self.current_ch = h.event_ch
+        self.current_ch = self._event_ch_idx   # 남정우 수정
         self.stft_cache.clear()
         self._plot_raw()
         self._plot_overview()
@@ -395,16 +413,17 @@ class ALMSViewer(QMainWindow):
         self.btn_analyze.setEnabled(True)
 
         h = self.alms_data.header
-        services.get_event_ch_result(results, h.event_ch)
+        # 남정우 수정: h.event_ch(ch_no 기반) 대신 _event_ch_idx(0-based) 사용
+        services.get_event_ch_result(results, self._event_ch_idx)
         best_result = services.get_max_ch_result(results)
 
         self.statusbar.showMessage(
             f"✅ Phase 2~3 완료  |  전채널 {len(results)}개  |  "
-            f"이벤트 CH={h.event_ch}  |  "
+            f"이벤트 CH={self._event_ch_idx}  |  "   # 남정우 수정
             f"MaxVal CH={best_result['ch_index'] if best_result else '-'}"
         )
 
-        self._update_features_table(results, h.event_ch)
+        self._update_features_table(results, self._event_ch_idx)   # 남정우 수정
         self.tabs.setCurrentIndex(2)
 
     def _on_all_stft_error(self, msg: str):
@@ -459,7 +478,7 @@ class ALMSViewer(QMainWindow):
             fig=self.canvas_overview.fig,
             channels=self.alms_data.channels,
             dur_ms=self.alms_data.header.event_duration,
-            event_ch=self.alms_data.header.event_ch,
+            event_ch=self._event_ch_idx,   # 남정우 수정: h.event_ch → _event_ch_idx
         )
         self.canvas_overview.draw()
 

@@ -64,6 +64,12 @@ def plot_raw(fig, raw, fs: int, dur_ms: int, ch_name: str):
 def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
                      ch_name: str, fmax_khz: int, nperseg: int,
                      overlap_pct: int, win_func: str, fs: int = None):
+    # =====================================================================
+    # 남정우 수정 주석: 이 함수는 services.compute_interactive_stft 의
+    # 반환값을 받아 그립니다. services.py 에서 이미 선형 magnitude 로
+    # 변환되어 오므로, 여기서는 power_db 라는 파라미터명을 유지하되
+    # 실제 값은 선형 magnitude 입니다 (하위 호환성 유지).
+    # =====================================================================
     fig.clear()
     fig.patch.set_facecolor('#1e1e2e')
     gs = gridspec.GridSpec(
@@ -73,7 +79,7 @@ def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
 
     freq_mask = freqs <= fmax_khz * 1000
     f_plot = freqs[freq_mask] / 1000
-    p_plot = power_db[freq_mask, :]
+    p_plot = power_db[freq_mask, :]   # 실제로는 linear magnitude
 
     raw = np.asarray(raw, dtype=np.float64)
     n = len(raw)
@@ -95,13 +101,49 @@ def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
     for sp in ax_fft.spines.values():
         sp.set_color('#45475a')
 
+    # =====================================================================
+    # 남정우 수정 (1/3) : Colormap 범위 — 퍼센타일 클리핑 적용
+    # ---------------------------------------------------------------------
+    # [수정 전] pcolormesh(...) vmin/vmax 없음 → 자동 범위
+    #           → 극단적인 피크 1개가 전체 색상 범위를 결정
+    #           → 나머지 신호가 모두 어둡게 뭉개짐
+    #
+    # [수정 후] vmax = 99.5 퍼센타일
+    #           → 상위 0.5%는 클리핑, 핵심 주파수 대역이 선명하게 강조
+    # =====================================================================
+    vmax = np.percentile(p_plot, 99.5)
+    vmax = vmax if vmax > 0 else 1.0
+
     # Spectrogram (y축은 좌측 FFT와 공유)
     ax_spec = fig.add_subplot(gs[0, 1], sharey=ax_fft)
     ax_spec.set_facecolor('#181825')
-    im = ax_spec.pcolormesh(times, f_plot, p_plot, shading='gouraud', cmap='inferno')
 
+    # =====================================================================
+    # 남정우 수정 (2/3) : pcolormesh 파라미터 변경
+    # ---------------------------------------------------------------------
+    # [수정 전] pcolormesh(times, f_plot, p_plot, shading='gouraud', cmap='inferno')
+    #           → times 단위: 초(sec), shading='gouraud', vmin/vmax 없음
+    #
+    # [수정 후] times * 1000 → ms 단위로 변환
+    #           shading='auto' (gouraud → auto, 데이터 크기 유연하게 처리)
+    #           vmin=0, vmax=퍼센타일 클리핑 적용
+    # =====================================================================
+    im = ax_spec.pcolormesh(
+        times * 1000, f_plot, p_plot,   # 남정우 수정: times → ms 단위
+        shading='auto', cmap='inferno',
+        vmin=0, vmax=vmax,              # 남정우 수정: 퍼센타일 클리핑
+    )
+
+    # =====================================================================
+    # 남정우 수정 (3/3) : colorbar 라벨 변경
+    # ---------------------------------------------------------------------
+    # [수정 전] cbar.set_label('Power (dB)', ...)
+    #           → dB 스케일 시절 라벨, 현재는 선형 magnitude 이므로 오해 소지
+    #
+    # [수정 후] cbar.set_label('Magnitude', ...)
+    # =====================================================================
     cbar = fig.colorbar(im, ax=ax_spec, pad=0.01)
-    cbar.set_label('Power (dB)', color='#a6adc8')
+    cbar.set_label('Magnitude', color='#a6adc8')   # 남정우 수정: 'Power (dB)' → 'Magnitude'
     cbar.ax.yaxis.set_tick_params(color='#a6adc8')
     plt.setp(cbar.ax.yaxis.get_ticklabels(), color='#a6adc8')
 
@@ -120,18 +162,17 @@ def plot_spectrogram(fig, freqs, times, power_db, raw, dur_ms: int,
             ax_spec.axhline(f_khz, color=clr, linewidth=0.8, linestyle='--', alpha=0.7, label=label)
     ax_spec.legend(loc='upper right', fontsize=8, facecolor='#313244', labelcolor='#cdd6f4')
 
-    # 하단: Raw signal (스펙트로그램 열 아래)
-    t = np.linspace(0, dur_ms / 1000, n)
+    # 하단: Raw signal — 남정우 수정: 시간축 sec → ms
+    t_ms = np.linspace(0, dur_ms, n)   # 남정우 수정: dur_ms 가 이미 ms 단위
     ax_raw = fig.add_subplot(gs[1, 1])
     ax_raw.set_facecolor('#181825')
-    ax_raw.plot(t, raw, color='#89b4fa', linewidth=0.5)
-    ax_raw.set_xlabel("Time (sec)", color='#a6adc8')
+    ax_raw.plot(t_ms, raw, color='#89b4fa', linewidth=0.5)
+    ax_raw.set_xlabel("Time (ms)", color='#a6adc8')   # 남정우 수정: "Time (sec)" → "Time (ms)"
     ax_raw.set_ylabel("Amplitude (V)", color='#a6adc8')
     ax_raw.tick_params(colors='#a6adc8')
     for sp in ax_raw.spines.values():
         sp.set_color('#45475a')
-    if len(times) > 0:
-        ax_raw.set_xlim([times[0], times[-1]])
+    ax_raw.set_xlim([0, dur_ms])   # 남정우 수정: [times[0], times[-1]] → [0, dur_ms] (ms 기준)
 
 
 def plot_overview(fig, channels, dur_ms: int, event_ch: int):
